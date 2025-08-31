@@ -1,0 +1,266 @@
+#---------------------------------------------------------------------------------------------------------------------------------------------
+
+#--------------------------------PROJECT SETUP ----------------------------------------------------------------------------------------------
+
+
+# THIS IS A DYNAMIC FRONT END THEME CHANGING WEBSITE , IT HAS LINES GOING AROUND & WAVING ------------------------------
+
+# RUN THIS USING FLASK ENV ----------------------------------------
+
+
+
+volcano_ui/
+├── app.py
+├── static/
+│   ├── script.js
+│   └── style.css
+└── templates/
+    └── index.html
+
+#---------------------------------------------------------------------------------------------------------------------------------------------
+
+ #     APP.PY ( PYTHON CODE ) 
+
+from flask import Flask, render_template
+
+app = Flask(__name__)
+
+@app.route('/')
+def index():
+    # This line tells Flask to find 'index.html' inside the 'templates' folder.
+    return render_template('index.html')
+
+if __name__ == '__main__':
+    # This makes the server run when you press the green play button.
+    app.run(debug=True)
+
+
+
+
+
+-------------------------------------------------------------------------------------------------------------------------------
+
+
+
+                             INDEX.HTML CODE 
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Volcanic Flow UI</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Alex+Brush&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <canvas id="background-canvas"></canvas>
+    <div class="ui-container">
+        <input type="text" id="chat-input" placeholder="Ask anything...">
+        <div id="feedback-message"></div>
+    </div>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
+
+
+
+
+
+
+#---------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------  CSS ( STATIC CSS ) -------------------------------------------------------------------- 
+
+
+:root {
+    --background-color: #0d1018;
+    --line-color: rgba(230, 230, 230, 0.6);
+    --accent-color: #EDFF00;
+    --selection-pink: #ff69b4;
+    --feedback-font: 'Alex Brush', cursive;
+}
+* { box-sizing: border-box; }
+body {
+    margin: 0;
+    padding: 0;
+    font-family: sans-serif;
+    background-color: var(--background-color);
+    color: white;
+    overflow: hidden;
+}
+::selection {
+    background-color: var(--selection-pink);
+    color: var(--background-color);
+}
+#background-canvas {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: -1;
+}
+.ui-container {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    padding: 20px;
+}
+#chat-input {
+    width: 100%;
+    max-width: 600px;
+    padding: 18px 25px;
+    font-size: 1.2em;
+    color: white;
+    background-color: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 50px;
+    outline: none;
+    transition: all 0.3s ease;
+}
+#chat-input::placeholder { color: rgba(255, 255, 255, 0.5); }
+#chat-input:focus {
+    border-color: var(--accent-color);
+    box-shadow: 0 0 15px rgba(237, 255, 0, 0.5);
+}
+#feedback-message {
+    margin-top: 25px;
+    font-family: var(--feedback-font);
+    font-style: italic;
+    font-size: 2.2em;
+    color: var(--accent-color);
+    text-shadow: 0 0 8px rgba(237, 255, 0, 0.7);
+    height: 50px;
+    transition: opacity 0.5s ease;
+}
+
+
+
+
+
+
+
+
+#--------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+
+
+
+
+
+
+
+#-------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+
+
+
+#------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+
+#-----------------------------------------------JS----------------------------------------------------------------------------------------- 
+
+
+
+document.addEventListener('DOMContentLoaded', () => {
+    const canvas = document.getElementById('background-canvas');
+    const ctx = canvas.getContext('2d');
+    let width, height;
+    const particles = [];
+    const particleCount = 500;
+    const noiseScale = 0.003;
+    const particleSpeed = 0.5;
+    const lineOpacity = 0.05;
+    const noise = (function() {
+        let p = new Uint8Array(512);
+        for (let i=0; i < 256; i++) p[i] = p[i+256] = Math.floor(Math.random()*256);
+        function fade(t) { return t*t*t*(t*(t*6-15)+10); }
+        function lerp(t,a,b) { return a+t*(b-a); }
+        function grad(hash,x,y,z) {
+            let h = hash & 15, u = h<8?x:y, v = h<4?y:h==12||h==14?x:z;
+            return ((h&1) == 0 ? u : -u) + ((h&2) == 0 ? v : -v);
+        }
+        return {
+            noise: function(x, y, z) {
+                let X = Math.floor(x)&255, Y = Math.floor(y)&255, Z = Math.floor(z)&255;
+                x -= Math.floor(x); y -= Math.floor(y); z -= Math.floor(z);
+                let u = fade(x), v = fade(y), w = fade(z);
+                let A = p[X]+Y, AA = p[A]+Z, AB = p[A+1]+Z,
+                    B = p[X+1]+Y, BA = p[B]+Z, BB = p[B+1]+Z;
+                return lerp(w, lerp(v, lerp(u, grad(p[AA], x, y, z),
+                                                grad(p[BA], x-1, y, z)),
+                                        lerp(u, grad(p[AB], x, y-1, z),
+                                                grad(p[BB], x-1, y-1, z))),
+                                lerp(v, lerp(u, grad(p[AA+1], x, y, z-1),
+                                                grad(p[BA+1], x-1, y, z-1)),
+                                        lerp(u, grad(p[AB+1], x, y-1, z-1),
+                                                grad(p[BB+1], x-1, y-1, z-1))));
+            }
+        }
+    })();
+    class Particle {
+        constructor() { this.x = Math.random() * width; this.y = Math.random() * height; }
+        update(time) {
+            const angle = noise.noise(this.x * noiseScale, this.y * noiseScale, time * 0.0001) * Math.PI * 2;
+            const vx = Math.cos(angle) * particleSpeed;
+            const vy = Math.sin(angle) * particleSpeed;
+            this.x += vx; this.y += vy;
+            if (this.x > width) this.x = 0; if (this.x < 0) this.x = width;
+            if (this.y > height) this.y = 0; if (this.y < 0) this.y = height;
+        }
+        draw(ctx) { ctx.beginPath(); ctx.arc(this.x, this.y, 1, 0, Math.PI * 2); ctx.fill(); }
+    }
+    function setup() {
+        width = canvas.width = window.innerWidth;
+        height = canvas.height = window.innerHeight;
+        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--line-color').trim();
+        particles.length = 0;
+        for (let i = 0; i < particleCount; i++) { particles.push(new Particle()); }
+    }
+    function animate(time) {
+        ctx.fillStyle = 'rgba(13, 16, 24, ' + lineOpacity + ')';
+        ctx.fillRect(0, 0, width, height);
+        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--line-color').trim();
+        particles.forEach(p => { p.update(time); p.draw(ctx); });
+        requestAnimationFrame(animate);
+    }
+    setup();
+    requestAnimationFrame(animate);
+    window.addEventListener('resize', setup);
+    const chatInput = document.getElementById('chat-input');
+    const feedbackMessage = document.getElementById('feedback-message');
+    let feedbackTimeout;
+    chatInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && chatInput.value.trim() !== '') {
+            e.preventDefault();
+            const userText = chatInput.value;
+            feedbackMessage.style.opacity = '1';
+            feedbackMessage.textContent = `Processing: "${userText}"`;
+            chatInput.value = '';
+            clearTimeout(feedbackTimeout);
+            feedbackTimeout = setTimeout(() => { feedbackMessage.style.opacity = '0'; }, 4000);
+        }
+    });
+});
+
+
+
+
+
+
+
+#------------------------------------------------------ THIS ENDS HERE -----------------------------------
+
+

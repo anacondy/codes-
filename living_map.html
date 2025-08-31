@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Living Vintage Map</title>
+    <style>
+        body {
+            background-color: #1a1a1a;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            font-family: 'Georgia', serif;
+            overflow: hidden;
+        }
+
+        #map-container {
+            position: relative;
+            width: 1200px;
+            height: 850px;
+            background-size: cover;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.7);
+            border: 5px solid #6a5a4a;
+            overflow: hidden;
+        }
+
+        #weather-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            pointer-events: none; /* Allows clicking through the canvas */
+        }
+
+        .ship {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            background-size: contain;
+            background-repeat: no-repeat;
+            z-index: 2;
+            transform-origin: center center;
+            animation: bob 6s ease-in-out infinite;
+            transition: transform 0.5s linear;
+        }
+        
+        .ship.shaking {
+            animation: bob 4s ease-in-out infinite, storm-shake 0.4s linear infinite;
+        }
+
+        #info-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(230, 218, 200, 0.85);
+            padding: 10px 20px;
+            border: 3px solid #5a4a3a;
+            border-radius: 5px;
+            color: #3d2e1f;
+            z-index: 10;
+            max-width: 300px;
+        }
+
+        #info-panel h2 {
+            margin: 0 0 5px 0;
+            font-size: 16px;
+        }
+
+        #info-panel p {
+            margin: 0;
+            font-size: 14px;
+        }
+
+        @keyframes bob {
+            0% { transform: translateY(0px) rotate(var(--rotation, 0deg)); }
+            50% { transform: translateY(-4px) rotate(var(--rotation, 0deg)); }
+            100% { transform: translateY(0px) rotate(var(--rotation, 0deg)); }
+        }
+
+        @keyframes storm-shake {
+            0% { transform: translate(1px, -1px) rotate(calc(var(--rotation, 0deg) - 3deg)); }
+            25% { transform: translate(-2px, 2px) rotate(calc(var(--rotation, 0deg) + 2deg)); }
+            50% { transform: translate(2px, 1px) rotate(calc(var(--rotation, 0deg) - 2deg)); }
+            75% { transform: translate(-1px, -2px) rotate(calc(var(--rotation, 0deg) + 3deg)); }
+            100% { transform: translate(1px, -1px) rotate(calc(var(--rotation, 0deg) - 3deg)); }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="map-container">
+        <canvas id="weather-canvas"></canvas>
+        <div id="ship1" class="ship"></div>
+        <div id="ship2" class="ship"></div>
+    </div>
+
+    <div id="info-panel">
+        <h2 id="info-month"></h2>
+        <p id="info-status"></p>
+    </div>
+
+<script>
+// --- EMBEDDED ASSETS (Base64 Encoded) ---
+const ASSETS = {
+    map: 'data:image/jpeg;base64,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pm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4IYFM3Nxb8j/BDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4IYFM3Nxb8j/BDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4IYFM3Nxb8j/BDApm5uLfkf4JDApm5uLfkf4IYFM3Nxb8j/BDApm5uLfkf4IYFM3Nxb8j/BDApm5uLfkf4JDApm5uLfkf4IYFM3Nxb8j/BDApm5uLfkf4IYFM3Nxb8j/BDApm5uLfkf4IYFM3Nxb8j/BDApm5uLPkf4IYFM3Nxb8j/BDApm5uLPkf4IYFM3Nxb8j/BDApm5uLfkf4IYFM3Nxb8j/BLApm5uLfkf4IYFM3Nxb8j/BLApm5uLfkf4IYFM3Nxb8j/BLApm5uLfkf4IYFM3Nxb8j/BLApm5uLfkf4IYFM3Nxb8j/BLCpm5uLfkf4IYVM3Nxb8j/BDApm5uLfkf4IYFM3Nxb8j/BDApm5uLfkf4IYVM3Nxb8j/BCgpm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4IYFM3Nxb8j/BLApm5uLfkf4IYFM3Nxb8j/BLApm5uLfkf4IYFM3Nxb8j/BLCpm5uLfkf4IYVM3Nxb8j/BCgpm5uLfkf4IYFM3Nxb8j/BDApm5uLfkf4IYFM3Nxb8j/BLCpm5uLfkf4IYFM3Nxb8j/BLApm5uLfkf4IYFM3Nxb8j/BLCpm5uLfkf4IYFM3Nxb8j/BLCpm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4IYFM3Nxb8j/BDApm5uLfkf4IYFM3Nxb8j/BCgpm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4JDApm5uLfkf4J-IIA/9pAIAAJCBcLUgIAFAgCBAgQIDAwMDAwUGBgcHCAkKCwwNDg8QERITFBUWHx8jJCYoKDY3ODk6REhMU1VXX2BjZGVmaGlqc3R1dnd4eXp7fH1+f4CBgoOEhYaHiImKi4yNjo+AgZKTlJWWl5iZmpucnZ6fkJGio6SlpqeoqaqrrK2ur6ChsrO0tba3uLm6u7y9vr/A/cLDxMXGx8jJysvMzc7PwMHS09TV1tfY2drb3N3e3+Dh4uPk5ebn6Onq6+zt7u/g4fLz9PX29/j5+vv8/f7/8AAEQgDVgWwAwEiAAIRAQMRAf/EAB8AAAEFAQEBAQEBAAAAAAAAAAABAgMEBQYHCAkKC//EALUQAAIBAwMCBAMFBQQEAAABfQECAwAEEQUSITFBBhNRYQcicRQygZGhCCNCscEVUtHwJDNicoIJChYXGBkaJSYnKCkqNDU2Nzg5OkNERUZHSElKU1VWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uucnZ6foOFh4ePi4+Tl5ufo6ery8/T19vf4+fr/xAAfAQADAQEBAQEBAQEBAAAAAAABAgMEBQYHCAkKC//EALURAAIBAgQEAwQHBQQEAAECdwABAgMRBAUhMQYSQVEHYXETIjKBCBRCkaGxwQkjM1LwFWJy0QoWJDThJfEXGBkaJicoKSo1Njc4OTpDREVGR0hJSlNUVVZXWFlaY2RlZmdoaWpzdHV2d3h5eoKDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uucnZ6foOFh4ePi4+Tl5ufo6ery8/T19vf4+fr/2wBDAAICAgICAgMCAgMEAwMDBAUIBQUEBAUKBwcGCAwKDAwLCgsLDQ4SEA0OEQ4LCxAWEBETFBUVFQwPFxgWFBgSFBUU/9sAQBAICAgICAgUDAwUKBwYFBAUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU/8AAEQgCLAPAAwERAAIRAQMRAPwD+V+iiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigA'
+    ship: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAyCAYAAAAeP4ixAAACMElEQVRYhe2Zu24CMRCFZ1QEUgLkD1BwBA4ECSoK8QkS/0B8gTwBw+UJuOOgIeAGBw5eICIoCAgCgYAo2VfH2pW92I4dSeKkklj29vP+nYcdNq/L9xYfD8fhmP8zXAgYEAwIxiBYQgCGzWbjcDodrVYbDodznbwdfD4fPM/H5XJBKpUKhUJWq9Vut4uFQiEcDufz+c1kMkGv1w8Gg4m+74lE4vP5vN/vXy6XZzO+vV4vFEGgXq+LRVEURZIkHo+LxeJ/X86yLE3TSJL0+XzGf1f2KZZl1WoVbNt+v1+xPZckqVarpmnKsiwIIhiGcrmcTqcpimIymTQajYfDUa/X3W734XC4XC5nPB5/tG9ZlgzDUDc7EkIgy7Jarb6/c+U3u/l8PpfLZYqi2u22VCrV6/X33/5vG5aWZTv/k5bL5bIsy/M8vV5vMpl0uVxLpRLz+Xw+n4vFYjgcTrPZvNlssCwLwzBAALIsGwwGvu/L5/O32/2kLMvzer3ZbPZ+v9/v9/P5nEqlOhyOrNfr+XxeEASz2Xw+ny+VSuPxeDgcPuh5/b7/crn8/f7rdrul0+m9Xq/VapVl2c1m0+v1mqZpmiYIIpVKdbvder3e6XTa7/dbLJfL5fL7/X7f9zAMwzDo9/vdbvfxeHzf932//31hGAaCgGEYBEEwDIOmaZrm6sPq2+12MBg0m82vXz1pNBp+v3+9Xm+z2ZAkSeuV02q1nE6n1WpFEESStFqtRqMxaZq2222z2SyXy/P5vM/nI0kSjuN5nu/7vu8wDPu+/3e+98tNHRBMCAYEgxAsIQADgQHBAASLAZ/Pt9lsxmAweDweHo9HkiRBEP+aP+4gCIIkSb1eLxaL4XQ6f7/609/T+f2+VCq1Wq3dbrfZbJaL/r0+n+/9D/D5fGEYpmmKomi1WvP5vCAIbDYbgiCopuf0s9ns6+trMplMJBJ2u/33aJpGoVCsVqvf7y9G/4/l+n2+b3s/iULw/3/9T/wbDAhGIHiXAQYApA4O/eDWIcEAAAAASUVORK5CYII=',
+    cyclone: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAYAAADimHc4AAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAOxAAADsQBlSsOGwAAA+JJREFUeJzt3D1PFFEUx/HPSVqhiIZeEAvRWkgM9CgE4dFYSFhYaYGFhY2FlVjYCAqlja34A7SwsBIrFS0sLEQKNcQgsUfQ3SSb8ex9fe8kEwkJz+SR7O67M/fN2x2HYRiGYRiGYRiGYRiGYRhO4QhM8h5wA5wD3oA/wH3gKPC36W8KjAEHgF/AI+Au8G39Q04BtcAmcBSoa/U1cAl4A3Q1+irwEigCdwGdgGNAHbALzDT6GnAXaAvcA+4DjcBEoK/Rm4AzQF8wA+wCh4CyJj8H7gNtQZ+hP6N/BS6AFkY/BboB2dAXaM3or0AP4KzRz4B6wFGgL+N2wF5gb9Ce0a8AHeA00N7oV4AOwFlgv9Ge0ecAvYD/gb1FvwLXgGFAZ6PHgFbATWBv0c8AI4DOQg8B+4F9wN6izwHbgI5CDwD7gH3A3qK/ADYAnehRAHjgP3A0qK/A/kAf0OMAWJvA3qL/AjYAjXY8AAoD+4G9Rf8GNgFqdn4ACgZ2A/uO/hpsBVzU8QAoGDgU2PfoP4AtgBOdDwAigQtB/Y7+CdgCuKTzAaAQuB3Y+einQDtgk04HgCLEPcC+o58B24AXOh0AisBNwL6jPwMbgSc6HQCiwL3AnqOfAYd15zS4GqjX6b8DvgZsdDoAxN/uA/Yc/QzYB/yo4wHg/18b2L9x/+1wOqDk/wP+B/3r2L5H3/4APM8C/5kLw3/gO3AHWAO+hR4ABYGrgf1GvwrMgA7RwwB44D5wb1F/A3uBjjYUgMLBbcBeoy8AmwBdbXAAFAzcCuxL9B+wDXDR2QAgCFwM7Ez0A2AX4JzOBQAQd4G9RH8GNsB1nQ8AQdwF9ir6KbADXOxsABCE7gP2Lvo5sAvwVqcDQDjxCew1+lmwC/CkkwFAOLkS2Gv0s2AX4DEnA4BwqoG9Rb8GtgGPORkAwsmdwN6ivwW2AY85GQCCp2yBvUU/AjYBDznZAAQf3wPsNfpRsAvwwckGIPh6PbDX6CdiE/C8kwFAPN0f2Gv0A7EJEPAkABBPXwL2Gv0Q7EKEPAsARNN/A/sO/RhshYg9CwBEE18C9hv9ANiCiFkWAIiubwX2G/0I2IaIWRYAiK5/BvYd/QjYjohZFoAo9U1g/6M/BTZEZCyLQAQ6t8D+R/8CbIPIWRaBCD0mwP5H/xVsQ8qslU3GMAzDMAzDMAzDMAzDMAxdcQ2pQ243Qj13/wAAAABJRU5ErkJggg=='
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+    // --- CONFIGURATION ---
+    const MAP_WIDTH = 1200;
+    const MAP_HEIGHT = 850;
+    const SHIP_SPEED = 0.3;
+    const PARTICLE_LIFESPAN = 50;
+
+    // --- DOM ELEMENTS ---
+    const mapContainer = document.getElementById('map-container');
+    const canvas = document.getElementById('weather-canvas');
+    const ctx = canvas.getContext('2d');
+    const ship1El = document.getElementById('ship1');
+    const ship2El = document.getElementById('ship2');
+    const infoMonthEl = document.getElementById('info-month');
+    const infoStatusEl = document.getElementById('info-status');
+    
+    // Set background images from Base64
+    mapContainer.style.backgroundImage = `url(${ASSETS.map})`;
+    ship1El.style.backgroundImage = `url(${ASSETS.ship})`;
+    ship2El.style.backgroundImage = `url(${ASSETS.ship})`;
+
+    // Canvas setup
+    canvas.width = MAP_WIDTH;
+    canvas.height = MAP_HEIGHT;
+
+    // --- INTERNAL DATA & STATE ---
+    
+    // Ship paths (x, y coordinates)
+    const paths = {
+        atlantic: [
+            { x: 750, y: 300 }, // Europe
+            { x: 450, y: 400 }, // Mid-Atlantic
+            { x: 300, y: 450 }, // Caribbean
+            { x: 480, y: 650 }, // South Atlantic
+            { x: 800, y: 550 }, // Off South Africa
+        ],
+        indianOcean: [
+            { x: 800, y: 600 }, // South Africa
+            { x: 950, y: 500 }, // Indian Ocean
+            { x: 1100, y: 650 },// Near Australia
+            { x: 900, y: 750 }, // Southern Ocean
+        ]
+    };
+
+    // Ship objects
+    const ships = [
+        { el: ship1El, path: paths.atlantic, index: 0, progress: 0, x: 0, y: 0, inStorm: false },
+        { el: ship2El, path: paths.indianOcean, index: 0, progress: 0, x: 0, y: 0, inStorm: false }
+    ];
+
+    // Weather zones [x, y, width, height]
+    const zones = {
+        northAtlantic: [250, 250, 500, 250],
+        equatorialAtlantic: [300, 420, 300, 150],
+        northEurope: [680, 200, 200, 150],
+        northAmerica: [150, 200, 250, 200]
+    };
+
+    // Particles for effects
+    let particles = [];
+    
+    // Cyclone object
+    const cyclone = {
+        img: new Image(),
+        x: 0, y: 0,
+        angle: 0,
+        speed: 0.2,
+        path: [{x: 550, y: 500}, {x: 350, y: 450}],
+        index: 0,
+        progress: 0,
+        active: false
+    };
+    cyclone.img.src = ASSETS.cyclone;
+
+    // --- WEATHER ENGINE ---
+    const weather = {
+        isWinter: false,
+        isSummer: false,
+        monthName: '',
+        statusText: ''
+    };
+
+    function runWeatherEngine() {
+        const date = new Date();
+        const month = date.getMonth(); // 0 (Jan) - 11 (Dec)
+        weather.monthName = date.toLocaleString('default', { month: 'long' });
+
+        const winterMonths = [9, 10, 11, 0, 1, 2]; // Oct - Mar
+        weather.isWinter = winterMonths.includes(month);
+        weather.isSummer = !weather.isWinter;
+
+        if (weather.isWinter) {
+            weather.statusText = 'Winter storms in the North Atlantic. Snowfall likely over northern continents.';
+        } else {
+            weather.statusText = 'Calm seas in the North. Cyclone season active near the equator.';
+            cyclone.active = true;
+            cyclone.x = cyclone.path[0].x;
+            cyclone.y = cyclone.path[0].y;
+        }
+
+        infoMonthEl.textContent = `Current Month: ${weather.monthName}`;
+        infoStatusEl.textContent = weather.statusText;
+    }
+
+    // --- UTILITY FUNCTIONS ---
+    function isPointInZone(x, y, zone) {
+        return x > zone[0] && x < zone[0] + zone[2] && y > zone[1] && y < zone[1] + zone[3];
+    }
+    
+    function lerp(start, end, amt) {
+        return (1 - amt) * start + amt * end;
+    }
+
+    // --- PARTICLE SYSTEM ---
+    function createParticle(x, y, type) {
+        const life = PARTICLE_LIFESPAN + Math.random() * 50;
+        let p = { x, y, life, maxLife: life, type };
+
+        if (type === 'rain') {
+            p.vx = 0; p.vy = 5 + Math.random() * 5;
+        } else if (type === 'snow') {
+            p.vx = Math.random() * 1 - 0.5; p.vy = 0.5 + Math.random() * 0.5;
+        } else if (type === 'wake') {
+            p.vx = Math.random() * 0.2 - 0.1; p.vy = Math.random() * 0.2 - 0.1;
+            p.life = 20 + Math.random() * 20;
+            p.maxLife = p.life;
+        }
+        particles.push(p);
+    }
+    
+    function updateAndDrawParticles() {
+        for (let i = particles.length - 1; i >= 0; i--) {
+            let p = particles[i];
+            p.life--;
+            p.x += p.vx;
+            p.y += p.vy;
+
+            if (p.life <= 0) {
+                particles.splice(i, 1);
+                continue;
+            }
+            
+            const opacity = p.life / p.maxLife;
+            
+            if (p.type === 'rain') {
+                ctx.strokeStyle = `rgba(150, 180, 220, ${opacity * 0.7})`;
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(p.x, p.y);
+                ctx.lineTo(p.x, p.y + 10);
+                ctx.stroke();
+            } else if (p.type === 'snow' || p.type === 'wake') {
+                const radius = p.type === 'snow' ? (opacity * 2) : (opacity * 1.5);
+                ctx.fillStyle = `rgba(255, 255, 255, ${opacity * 0.8})`;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+    }
+
+
+    // --- UPDATE & DRAW FUNCTIONS ---
+
+    function updateShips() {
+        ships.forEach(ship => {
+            const startPoint = ship.path[ship.index];
+            const endPoint = ship.path[(ship.index + 1) % ship.path.length];
+
+            const dist = Math.hypot(endPoint.x - startPoint.x, endPoint.y - startPoint.y);
+            const steps = dist / SHIP_SPEED;
+
+            ship.progress += 1;
+            if (ship.progress >= steps) {
+                ship.progress = 0;
+                ship.index = (ship.index + 1) % ship.path.length;
+            }
+
+            const t = ship.progress / steps;
+            ship.x = lerp(startPoint.x, endPoint.x, t);
+            ship.y = lerp(startPoint.y, endPoint.y, t);
+
+            // Angle for rotation
+            const angle = Math.atan2(endPoint.y - startPoint.y, endPoint.x - startPoint.x) * (180 / Math.PI);
+            
+            // Update ship element position and rotation
+            ship.el.style.setProperty('--rotation', `${angle + 90}deg`);
+            ship.el.style.left = `${ship.x - ship.el.width / 2}px`;
+            ship.el.style.top = `${ship.y - ship.el.height / 2}px`;
+            
+            // Check for storm
+            ship.inStorm = weather.isWinter && isPointInZone(ship.x, ship.y, zones.northAtlantic);
+            ship.el.classList.toggle('shaking', ship.inStorm);
+
+            // Create wake particle
+            if (Math.random() > 0.5) {
+                createParticle(ship.x, ship.y, 'wake');
+            }
+        });
+    }
+
+    function updateCyclone() {
+        if (!cyclone.active) return;
+
+        const startPoint = cyclone.path[cyclone.index];
+        const endPoint = cyclone.path[(cyclone.index + 1) % cyclone.path.length];
+        const dist = Math.hypot(endPoint.x - startPoint.x, endPoint.y - startPoint.y);
+        const steps = dist / cyclone.speed;
+
+        cyclone.progress += 1;
+        if (cyclone.progress >= steps) {
+            cyclone.progress = 0;
+            cyclone.index = (cyclone.index + 1) % cyclone.path.length;
+        }
+
+        const t = cyclone.progress / steps;
+        cyclone.x = lerp(startPoint.x, endPoint.x, t);
+        cyclone.y = lerp(startPoint.y, endPoint.y, t);
+        cyclone.angle += 0.03;
+    }
+
+    let frame = 0;
+    function drawCanvas() {
+        ctx.clearRect(0, 0, MAP_WIDTH, MAP_HEIGHT);
+        
+        // 1. Draw water effect
+        const isStormy = ships.some(s => s.inStorm);
+        const waveAmplitude = isStormy ? 4 : 1.5;
+        const waveSpeed = isStormy ? 0.05 : 0.02;
+
+        ctx.fillStyle = 'rgba(100, 150, 200, 0.2)';
+        for (let i = 0; i < 5; i++) {
+            ctx.beginPath();
+            ctx.moveTo(0, MAP_HEIGHT);
+            for (let x = 0; x < MAP_WIDTH; x++) {
+                const y = Math.sin(x * 0.01 + frame * waveSpeed + i * 0.5) * waveAmplitude + (MAP_HEIGHT - 200 + i * 40);
+                ctx.lineTo(x, y);
+            }
+            ctx.lineTo(MAP_WIDTH, MAP_HEIGHT);
+            ctx.fill();
+        }
+
+        // 2. Generate and draw weather particles
+        if (weather.isWinter) {
+            if (Math.random() > 0.7) createParticle(zones.northEurope[0] + Math.random() * zones.northEurope[2], zones.northEurope[1], 'snow');
+            if (Math.random() > 0.7) createParticle(zones.northAmerica[0] + Math.random() * zones.northAmerica[2], zones.northAmerica[1], 'snow');
+            if (isStormy && Math.random() > 0.3) {
+                 createParticle(zones.northAtlantic[0] + Math.random() * zones.northAtlantic[2], zones.northAtlantic[1], 'rain');
+            }
+        }
+        updateAndDrawParticles();
+
+        // 3. Draw cyclone
+        if (cyclone.active) {
+            ctx.save();
+            ctx.translate(cyclone.x, cyclone.y);
+            ctx.rotate(cyclone.angle);
+            ctx.globalAlpha = 0.7;
+            ctx.drawImage(cyclone.img, -cyclone.img.width / 2, -cyclone.img.height / 2);
+            ctx.restore();
+        }
+
+        frame++;
+    }
+
+    // --- MAIN ANIMATION LOOP ---
+    function animate() {
+        updateShips();
+        if (weather.isSummer) updateCyclone();
+        drawCanvas();
+        requestAnimationFrame(animate);
+    }
+
+    // --- INITIALIZATION ---
+    runWeatherEngine();
+    animate();
+});
+</script>
+
+</body>
+</html>
